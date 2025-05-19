@@ -1,9 +1,123 @@
+%{
+EUCLIDpreprocessing.m goal:
+prepare input data for EUCLID from the raw DIC data
+
+input:
+force, time, position of nodes in the initial configuration and their displacements over time
+
+output:
+-conne.txt
+    connectivity matrix
+    for triangular elements the matrix consists of (number of elements) rows and 4 columns. 
+    The 4 columns contain the index of the element and then the index of its component nodes.
+    example
+    [
+    1, 1, 38, 7
+    2, 5, 6, 39
+    3, 8, 9, 42
+    4, 3, 4, 40
+    5, 12, 13, 41
+    6, 10, 11, 43
+    7, 14, 15, 44
+    ...
+    ]
+
+-coord.csv
+    The matrix contains information about the mesh nodes.
+    It consists of (number of nodes) rows and 5 columns.
+    The 5 columns contain the node index, initial position along the x-axis, 
+    initial position along the y-axis, Degrees of Freedom (DoFs) along the 
+    vertical direction and DoFs in the horizontal direction.
+    The DoFs along the vertical direction are either 1 or 2, 1 if the node is
+    constrained in the upper side of the mesh and 2 if it is constrained in the lower side.
+    The Dofs along the horizontal direction are either 3 or 4, 3 in the case 
+    where the node is constrained in the right-hand side of the mesh and 4 if it is constrained in the left-hand side.
+    example
+    [
+    id,x,y,verticalDofs,horizontalDofs
+    1,-10.6284,28.9876,1,4
+    2,-10.6211,27.7976,0,4
+    3,-10.6120,26.6066,0,4
+    4,-10.5983,24.8201,0,4
+    5,-10.5847,23.0336,0,4
+    6,-10.5801,22.4381,0,4
+    7,-10.5756,21.8425,0,4
+    ...
+    ]
+
+-F.csv
+    F contains (number of DoFs) rows and (number of timesteps) columns.
+    in our case:
+    in the first row is the force acting on the upper edge in the vertical direction,
+    in the second the force acting on the lower edge in the vertical direction,
+    in the third the force acting on the right edge in the horizontal direction 
+    and in the fourth the force acting on the left edge in the horizontal direction
+    example
+    [
+    0.00459071,0.00472383,0.004679,0.00465854, ...
+    -0.00459071,-0.00472383,-0.004679,-0.00465854, ...
+    0,0,0,0, ...
+    0,0,0,0, ...
+    ]
+
+-time.csv
+    time contains the time instant at which the DIC data was acquired. 
+    It's (number of timesteps) rows and 1 column
+    
+    example
+    [
+    0
+    1.06508
+    2.07184
+    3.0716
+    4.06575
+    5.06411
+    6.079
+    ...
+    ]
+
+-U.csv
+    U is (2 x number of nodes) rows and (number of timesteps) columns.
+    the first (number of nodes) rows contain for each node the displacements in the horizontal direction
+    while the second (number of nodes) rows contain the displacements along the vertical direction
+    [
+    0,0.001,0.0012,0.0017, ...
+    0,0.0009,0.0012,0.0017, ...
+    0,0.0008,0.0011,0.0019, ...
+    0,0.0005,0.0012,0.0016, ...
+    ...
+    ]
+
+----  PROCEDURE  ----
+
+the matrices F.csv and time.csv can be created at any time because we use the input data.
+in my matlab code they are prepared at the beginning in %% import data and then the force is arranged in the matrix in %% force
+
+1- Identification of the nodes that are never lost during the entire test. The mesh will be created with respect to them.
+2- identification of the order of the nodes in the input file from the DIC.
+	These two steps are done before the %% reduced mesh section
+
+the variable smallSpecimenRegion was previously used to have meshes of reduced size, 
+now it is always negative so you can jump directly to the else %% total mesh
+
+3- finding the nodes on the edges of the mesh (you could collapse point 2 and 3 into the 
+   same function if you create a code that can handle everything on its own)
+4- finding the nodes that will compose the mesh (you could start by meshing all the nodes in the DIC, 
+   the code is in "if fullNodes"). The next "else" allows you to find a mesh with fewer nodes.
+5- composition of the mesh (I did the procedure with Rhino, etc.). You should find some library that does this in Phyton). 
+   When creating the mesh, you must generate the matrices conne.txt and coord.csv
+
+6- the U matrix must be created. I go back into the code once I have finished the Rhino, etc procedure to create 
+   the mesh in "if coordPart". At this point you just need to take the displacements obtained from the DIC 
+   for each node and each timestep and arrange them correctly in the matrix
+%}
+
 clc;
 clear all;
 close all;
 
 %% configuration
-firstRUN = false;
+firstRUN = true;
 meshTop = 29;  % mm
 height = 59.2;   % mm
 % boundary nodes
@@ -20,11 +134,11 @@ plots = true;
 export = false;
 
 fullNodes = true;
-coordPart = true;
-exportCoord = true;
+coordPart = false;
+exportCoord = false;
 
 % experiment number
-experimentNumber = 50;
+experimentNumber = 6;
 % 1 first test
 % 2 laser cut test
 % 3 ellipsoid hole
@@ -504,7 +618,7 @@ if export
     fclose(fID);
 
     nameDir = "experiments/" + experimentNumber + "/EUCLIDdata/";
-    nomi = ["id" "x" "y" "verticalGDL" "horizontalGDL"];
+    nomi = ["id" "x" "y" "verticalDoFs" "horizontalDoFs"];
     nameFile = strcat(nameDir,'coord.csv');
     fID = fopen(nameFile,'w');
     fprintf(fID,'%s,%s,%s,%s,%s\n',nomi');  % nomi
@@ -887,7 +1001,7 @@ if exportCoord
     fclose(fID);
 
     nameDir = "experiments/" + experimentNumber + "/EUCLIDdata/";
-    nomi = ["id" "x" "y" "verticalGDL" "horizontalGDL"];
+    nomi = ["id" "x" "y" "verticalDoFs" "horizontalDoFs"];
     nameFile = strcat(nameDir,'coord.csv');
     fID = fopen(nameFile,'w');
     fprintf(fID,'%s,%s,%s,%s,%s\n',nomi');  % nomi
