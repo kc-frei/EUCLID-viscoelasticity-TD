@@ -22,7 +22,7 @@ nK = 20;                    % volumetric
 
 EUCLIDdataPercentage = 100;%   percentage compared to the experiment
 sampling = 1/1;              % remaining data (1/1) (1/2) ...
-lassoProcedure = false;      % Lasso - least Square Non Negative
+lassoProcedure = true;      % Lasso - least Square Non Negative
 clusteringRange = 0.3;
 exportData = false;
 lambda_i = 1;
@@ -31,7 +31,7 @@ lambda_r = 1;  %10000000
 planeStress = true;
 
 realData = true;
-experimentNumber = 50;
+experimentNumber = 6;
 nameDir = "experiments/" + experimentNumber + "/EUCLIDdata/";
 
 %% import data 
@@ -92,7 +92,7 @@ tau_K = logspace(log10(tauMin),log10(tauMax),nK)'; %[7;15];%
 % tau_G = linspace(tauMin,tauMax,nG)';
 % tau_K = linspace(tauMin,tauMax,nK)';
 
-% betaDevElement and betaVolElement creaation
+% betaDevElement and betaVolElement creation
 disp('(3/8) - Beta creation'); %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 if realData
     if planeStress
@@ -342,33 +342,33 @@ if realData
     dof_leftY = dof_leftX;
     dof_leftX = 2*(dof_leftX-1)+1;
     dof_leftY = 2*(dof_leftY-1)+2;
-    edgeGDL = {dof_bottomX,dof_bottomY,dof_leftX,dof_leftY,dof_rightX,dof_rightY,dof_topX,dof_topY};
+    edgeDoFs = {dof_bottomX,dof_bottomY,dof_leftX,dof_leftY,dof_rightX,dof_rightY,dof_topX,dof_topY};
 else
     dataRLeftx_time = data.RLeftx_time(:,boolTime);
     dataRBottomx_time = data.RBottomx_time(:,boolTime);
-    edgeGDL = {data.dof_bottomX,data.dof_bottomY,data.dof_leftX,data.dof_leftY,data.dof_rightX,data.dof_rightY,data.dof_topX,data.dof_topY};
+    edgeDoFs = {data.dof_bottomX,data.dof_bottomY,data.dof_leftX,data.dof_leftY,data.dof_rightX,data.dof_rightY,data.dof_topX,data.dof_topY};
 end
 
-nEdges = length(edgeGDL);                        
-nNodesExternalGDL = cellfun('length',edgeGDL);  
-externalGDL = [];                               
+nEdges = length(edgeDoFs);                        
+nNodesExternalDoFs = cellfun('length',edgeDoFs);  
+externalDoFs = [];                               
 for i = 1:nEdges                                 
-    for j = 1:nNodesExternalGDL(i)   
-        if any(externalGDL == edgeGDL{i}(j))
+    for j = 1:nNodesExternalDoFs(i)   
+        if any(externalDoFs == edgeDoFs{i}(j))
 
         else
-            externalGDL(end+1) = edgeGDL{i}(j);
+            externalDoFs(end+1) = edgeDoFs{i}(j);
         end
     end                                          
 end                                              
 %$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 A_int = cell(1,timesteps);
-R_int = zeros(2*nNodes-length(externalGDL),1);
+R_int = zeros(2*nNodes-length(externalDoFs),1);
 A_bnd = cell(1,timesteps);
 R_bnd = cell(1,timesteps);
 index_vector = true(2*nNodes,1);
-index_vector(externalGDL) = false;
+index_vector(externalDoFs) = false;
 for t = 1:timesteps
     A_int{t} = zeros(2*nNodes,length(BGt(:,1))+length(BKt(:,1)));
     A_bnd{t} = zeros(nEdges,length(BGt(:,1))+length(BKt(:,1)));
@@ -387,18 +387,18 @@ end
 % A_bnd , R_bnd
 for t = 1:timesteps
     if realData
-        % edgeGDL = {[bottom X],[bottom Y],[left X],[left Y],[right X],[right Y],[top X],[top Y]};
+        % edgeDoFs = {[bottom X],[bottom Y],[left X],[left Y],[right X],[right Y],[top X],[top Y]};
         % force direction: up --> positive, down --> negative
         R_bnd{t}  =  [0;         F(2,t);     0;       0;       0;        0;        0;      F(1,t)]; 
     else
-        % edgeGDL = {[bottom X]                ,[bottom Y],[left X]                 ,[left Y],[right X],[right Y],[top X],[top Y]};
+        % edgeDoFs = {[bottom X]                ,[bottom Y],[left X]                 ,[left Y],[right X],[right Y],[top X],[top Y]};
         R_bnd{t} = [sum(dataRBottomx_time(:,t));-F0/2;     sum(dataRLeftx_time(:,t));0;       0;        0;        0;      F0/2]; % <---
     end
     for e = 1:nElements
         for nN = 1:nNodesElement
             for r = 1:nEdges
-                if(any(fix((1+edgeGDL{r})/2) == conne(e,nN)))
-                    A_bnd{t}(r,:) = A_bnd{t}(r,:) + ae{e}{t}(2*(nN-1)+1+mod(1+edgeGDL{r}(1),2),:);
+                if(any(fix((1+edgeDoFs{r})/2) == conne(e,nN)))
+                    A_bnd{t}(r,:) = A_bnd{t}(r,:) + ae{e}{t}(2*(nN-1)+1+mod(1+edgeDoFs{r}(1),2),:);
                 end
             end
         end
@@ -424,16 +424,48 @@ end
 
 %% results
 disp('(7/8) - Theta evaluation'); %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A_text = A_exp;
 if lassoProcedure
-    Nlam = 10;
-    lammin = -6;
-    lammax = -1;    %   -14     2    1000
+    result1 = cell(1,1);
+    info = cell(1,1);
+    deletedColumns = cell(1,1);
+    Nlam = 1;
+    lammin = -12;
+    lammax = -12;    %   -14     2    1000
     Lambda = logspace(lammin,lammax,Nlam);
+    stay = true;
 
-    [result1,info] = lasso(A_exp,R_exp,'Lambda',Lambda,'MaxIter',10e3,'RelTol',1e-8,'Standardize',true);
+    while stay
+        [result1{end},info{end}] = lasso(A_text,R_exp,'Lambda',Lambda,'MaxIter',10e3,'RelTol',1e-3,'Standardize',true);
+        if ~isempty(find(result1{end}<0)) % if we have a negative value in result1
+            deletedColumns{end} = find(result1{end}<0);
+            A_text(:,deletedColumns{end}) = [];
+            result1{end+1} = [];
+            info{end+1} = [];
+            deletedColumns{end+1} = [];
+        else
+            stay = false;
+        end
+    end
+
+    %tau
+    tau = [0; tau_G; 0; tau_K];
+    map = ones(length(tau),1);
+    for i = 1:length(deletedColumns)
+        dummy = find(map); % find the index of elements other than 0
+        for j = 1:length(deletedColumns{i})
+            map(dummy(deletedColumns{i}(j))) = 0;
+        end
+    end
+    tau = tau(find(map));
+    disp('Finished');
+    return
+
 else
     [result,resnorm,residual,exitflag,output,lambda] = lsqnonneg(A_exp,R_exp);
 end
+
+%%
 
 thetaResult = result;
 
